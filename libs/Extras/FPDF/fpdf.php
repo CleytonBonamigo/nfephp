@@ -64,6 +64,7 @@ class FPDF
     public $creator;            //creator
     public $AliasNbPages;       //alias for total number of pages
     public $PDFVersion;         //PDF version number
+    public $extgstates = array();   //Transparency of text
     
     public function FPDF($orientation = 'P', $unit = 'mm', $format = 'A4')
     {
@@ -1646,6 +1647,10 @@ class FPDF
             $this->_out('/F'.$font['i'].' '.$font['n'].' 0 R');
         }
         $this->_out('>>');
+        $this->_out('/ExtGState <<');
+        foreach($this->extgstates as $k=>$extgstate)
+            $this->_out('/GS'.$k.' '.$extgstate['n'].' 0 R');
+        $this->_out('>>');
         $this->_out('/XObject <<');
         $this->_putxobjectdict();
         $this->_out('>>');
@@ -1655,6 +1660,7 @@ class FPDF
     {
         $this->_putfonts();
         $this->_putimages();
+        $this->_putextgstates();
         //Resource dictionary
         $this->offsets[2]=strlen($this->buffer);
         $this->_out('2 0 obj');
@@ -1753,5 +1759,44 @@ class FPDF
         $this->_out($o);
         $this->_out('%%EOF');
         $this->state=3;
+    }
+
+    // alpha: real value from 0 (transparent) to 1 (opaque)
+    // bm:    blend mode, one of the following:
+    //          Normal, Multiply, Screen, Overlay, Darken, Lighten, ColorDodge, ColorBurn,
+    //          HardLight, SoftLight, Difference, Exclusion, Hue, Saturation, Color, Luminosity
+    protected function SetAlpha($alpha, $bm='Normal')
+    {
+        // set alpha for stroking (CA) and non-stroking (ca) operations
+        $gs = $this->AddExtGState(array('ca'=>$alpha, 'CA'=>$alpha, 'BM'=>'/'.$bm));
+        $this->SetExtGState($gs);
+    }
+
+    protected function AddExtGState($parms)
+    {
+        $n = count($this->extgstates)+1;
+        $this->extgstates[$n]['parms'] = $parms;
+        return $n;
+    }
+
+    protected function SetExtGState($gs)
+    {
+        $this->_out(sprintf('/GS%d gs', $gs));
+    }
+
+    protected function _putextgstates()
+    {
+        for ($i = 1; $i <= count($this->extgstates); $i++)
+        {
+            $this->_newobj();
+            $this->extgstates[$i]['n'] = $this->n;
+            $this->_out('<</Type /ExtGState');
+            $parms = $this->extgstates[$i]['parms'];
+            $this->_out(sprintf('/ca %.3F', $parms['ca']));
+            $this->_out(sprintf('/CA %.3F', $parms['CA']));
+            $this->_out('/BM '.$parms['BM']);
+            $this->_out('>>');
+            $this->_out('endobj');
+        }
     }
 }
